@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ResearchGraph — Academic Knowledge Graph</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.mjs" type="module"></script>
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    :root{--bg:#f7f8fc;--card:#fff;--ink:#182033;--muted:#687085;--line:#e5e8f0;--accent:#5b5ce2;--accent2:#7c5cff;--good:#087f5b;--warn:#a65b00}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+    header{padding:22px 5vw;background:linear-gradient(135deg,#24274f,#5b5ce2);color:#fff}
+    .brand{font-size:23px;font-weight:800;letter-spacing:-.5px}.tag{opacity:.82;font-size:13px;margin-top:3px}
+    .wrap{max-width:1200px;margin:24px auto;padding:0 18px}.hero{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 8px 24px rgba(30,35,70,.05)}
+    h2,h3{margin:0 0 9px}.muted{color:var(--muted);font-size:13px}.search{display:flex;gap:8px;margin-top:14px}
+    input,button{font:inherit} input[type=text]{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:11px;outline:none}
+    button{border:0;border-radius:11px;padding:11px 15px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
+    button.secondary{background:#eef0ff;color:#4044bb}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chip{padding:7px 10px;border:1px solid #dddff5;background:#f5f5ff;border-radius:999px;font-size:12px;cursor:pointer}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.full{grid-column:1/-1}
+    #graph{height:480px;border:1px solid var(--line);border-radius:14px;background:#fcfcff}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}.stat{padding:13px;border:1px solid var(--line);border-radius:13px;background:#fafbff}.num{font-size:25px;font-weight:800}.label{font-size:11px;color:var(--muted)}
+    .result{padding:12px 0;border-bottom:1px solid var(--line)}.result:last-child{border-bottom:0}.pill{display:inline-block;font-size:10px;padding:4px 7px;border-radius:999px;background:#edf1ff;color:#4146b4;margin-right:6px}
+    .drop{border:2px dashed #cfd4e5;border-radius:14px;padding:20px;text-align:center;margin-top:12px}.drop input{display:none}.drop label{display:inline-block;padding:10px 13px;background:#f0f1ff;border-radius:10px;color:#4547b9;font-weight:700;cursor:pointer}
+    .notice{margin-top:10px;padding:10px 12px;border-radius:10px;background:#f5fbf8;color:var(--good);font-size:12px}
+    footer{text-align:center;color:var(--muted);font-size:11px;padding:24px}
+    @media(max-width:800px){.hero,.grid{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="brand">ResearchGraph</div>
+  <div class="tag">AI-assisted academic research discovery & knowledge graph</div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="card">
+      <h2>Find hidden research connections</h2>
+      <div class="muted">Search across papers, researchers, topics and datasets using one connected research graph.</div>
+      <div class="search">
+        <input id="searchInput" type="text" placeholder="Try: AI healthcare, agriculture, fraud detection..." />
+        <button onclick="runSearch()">Search</button>
+      </div>
+      <div class="chips">
+        <span class="chip" onclick="setQ('AI healthcare')">AI healthcare</span>
+        <span class="chip" onclick="setQ('machine learning')">machine learning</span>
+        <span class="chip" onclick="setQ('agriculture')">agriculture</span>
+        <span class="chip" onclick="setQ('fraud detection')">fraud detection</span>
+      </div>
+      <div id="results" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card">
+      <h3>Ingest research</h3>
+      <div class="muted">Upload a PDF, Markdown or text file. The prototype extracts key entities locally and adds them to the graph.</div>
+      <div class="drop">
+        <label for="fileInput">Choose file</label>
+        <input id="fileInput" type="file" accept=".pdf,.txt,.md,.markdown" />
+        <div id="fileStatus" class="muted" style="margin-top:8px">No file selected</div>
+      </div>
+      <div class="notice">MVP mode: the browser demonstrates the research-ingestion and graph workflow. A production deployment can connect the same pipeline to Vertex AI for entity extraction/embeddings, AlloyDB for vector search, and Cloud Run for scalable hosting.</div>
+    </div>
+  </section>
+
+  <div class="stats">
+    <div class="stat"><div class="num" id="paperCount">10</div><div class="label">PAPERS</div></div>
+    <div class="stat"><div class="num" id="researcherCount">8</div><div class="label">RESEARCHERS</div></div>
+    <div class="stat"><div class="num" id="topicCount">12</div><div class="label">TOPICS</div></div>
+    <div class="stat"><div class="num" id="edgeCount">0</div><div class="label">CONNECTIONS</div></div>
+  </div>
+
+  <section class="grid">
+    <div class="card full">
+      <h3>Research Knowledge Graph</h3>
+      <div class="muted">Click nodes to inspect related research. Purple = paper, blue = topic, green = researcher, orange = dataset.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;font-size:11px">
+        <span class="pill">1. Ingest research</span>
+        <span class="pill">2. Extract entities</span>
+        <span class="pill">3. Connect relationships</span>
+        <span class="pill">4. Surface insights</span>
+      </div>
+      <div id="graph"></div>
+    </div>
+
+    <div class="card">
+      <h3>Collaboration radar</h3>
+      <div class="muted">Potential cross-disciplinary matches discovered from shared topics.</div>
+      <div id="collab"></div>
+    </div>
+
+    <div class="card">
+      <h3>Redundancy radar</h3>
+      <div class="muted">Flags papers that are likely to overlap with an existing study.</div>
+      <div id="redundancy"></div>
+    </div>
+  </section>
+</main>
+<footer>ResearchGraph • Hackathon prototype • Designed for Google Cloud / Vertex AI / AlloyDB / Cloud Run architecture</footer>
+
+<script>
+const baseDocs = [
+ {id:'p1',title:'AI-Based Diabetes Risk Prediction',author:'Aarav Mehta',dept:'Computer Science',topics:['AI','Machine Learning','Healthcare'],dataset:'Diabetes Dataset'},
+ {id:'p2',title:'Crop Disease Detection with Computer Vision',author:'Nisha Rao',dept:'Biotechnology',topics:['AI','Computer Vision','Agriculture'],dataset:'PlantVillage'},
+ {id:'p3',title:'Predictive Analytics for Hospital Readmission',author:'Ishaan Verma',dept:'Data Science',topics:['Machine Learning','Healthcare','Predictive Analytics'],dataset:'Hospital Records'},
+ {id:'p4',title:'NLP for Medical Records',author:'Ananya Shah',dept:'Computer Science',topics:['AI','NLP','Healthcare'],dataset:'Clinical Notes'},
+ {id:'p5',title:'Machine Learning for Financial Fraud Detection',author:'Kabir Jain',dept:'Finance',topics:['Machine Learning','Fraud Detection','Predictive Analytics'],dataset:'Transaction Dataset'},
+ {id:'p6',title:'AI for Personalized Student Support',author:'Meera Iyer',dept:'Education',topics:['AI','Education','Predictive Analytics'],dataset:'Student Performance'},
+ {id:'p7',title:'Computer Vision for Smart Farming',author:'Rohan Das',dept:'Agriculture',topics:['Computer Vision','Agriculture','AI'],dataset:'Drone Imagery'},
+ {id:'p8',title:'Graph Analytics for Research Collaboration',author:'Diya Menon',dept:'Data Science',topics:['Knowledge Graph','Graph Analytics','AI'],dataset:'University Research Corpus'},
+ {id:'p9',title:'Explainable AI in Clinical Decision Support',author:'Vikram Singh',dept:'Healthcare',topics:['AI','Healthcare','Explainable AI'],dataset:'Clinical Dataset'},
+ {id:'p10',title:'Student Performance Prediction Using ML',author:'Sana Khan',dept:'Education',topics:['Machine Learning','Education','Predictive Analytics'],dataset:'Student Performance'}
+];
+let docs=[...baseDocs];
+
+function lower(s){return s.toLowerCase()}
+function similarity(q,doc){const terms=lower(q).split(/[^a-z0-9]+/).filter(Boolean); const text=lower([doc.title,doc.author,doc.dept,...doc.topics,doc.dataset].join(' ')); let hits=0; for(const t of terms) if(text.includes(t)) hits++; return terms.length?Math.round(100*hits/terms.length):0}
+function setQ(q){document.getElementById('searchInput').value=q;runSearch()}
+function runSearch(){
+ const q=document.getElementById('searchInput').value.trim();
+ if(!q){document.getElementById('results').innerHTML='<div class="muted">Enter a research topic to search the graph.</div>';return;}
+ const ranked=docs.map(d=>({d,s:similarity(q,d)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,6);
+ document.getElementById('results').innerHTML=ranked.length?ranked.map(x=>`<div class="result"><span class="pill">${x.s}% match</span><b>${x.d.title}</b><div class="muted">${x.d.author} • ${x.d.dept} • ${x.d.topics.join(', ')}</div></div>`).join(''):'<div class="muted">No close matches found.</div>';
+ highlightGraph(ranked.map(x=>x.d.id));
+}
+function buildGraph(){
+ const nodes=[],edges=[],seenN=new Set(),seenE=new Set();
+ const addN=(id,label,group,title)=>{if(!seenN.has(id)){nodes.push({id,label,group,title});seenN.add(id)}};
+ const addE=(from,to,label)=>{const k=from+'-'+to;if(!seenE.has(k)){edges.push({from,to,label,arrows:'to'});seenE.add(k)}};
+ for(const d of docs){
+   addN(d.id,d.title,'paper','Paper'); addN('r:'+d.author,d.author,'researcher','Researcher'); addE('r:'+d.author,d.id,'authored');
+   addN('ds:'+d.dataset,d.dataset,'dataset','Dataset'); addE(d.id,'ds:'+d.dataset,'uses');
+   for(const t of d.topics){addN('t:'+t,t,'topic','Topic');addE(d.id,'t:'+t,'about')}
+ }
+ const container=document.getElementById('graph');
+ const data={nodes:new vis.DataSet(nodes),edges:new vis.DataSet(edges)};
+ const options={physics:{stabilization:true},interaction:{hover:true},nodes:{shape:'dot',size:18,borderWidth:2,font:{size:12,color:'#1f2937',face:'Arial',strokeWidth:0,align:'center'},margin:6},groups:{
+  paper:{color:{background:'#ddd8ff',border:'#5b52df'}},
+  researcher:{color:{background:'#d8f4e8',border:'#29936d'}},
+  topic:{color:{background:'#dcecff',border:'#4e8de8'}},
+  dataset:{color:{background:'#ffebc9',border:'#df9835'}}
+ }};
+ window.network=new vis.Network(container,data,options);
+ window.network.on('click',p=>{if(p.nodes.length){const n=data.nodes.get(p.nodes[0]); document.getElementById('results').innerHTML=`<div class="result"><b>${n.label}</b><div class="muted">${n.title}</div></div>`}});
+ document.getElementById('edgeCount').textContent=edges.length;
+ document.getElementById('paperCount').textContent=docs.length;
+ document.getElementById('researcherCount').textContent=new Set(docs.map(d=>d.author)).size;
+ document.getElementById('topicCount').textContent=new Set(docs.flatMap(d=>d.topics)).size;
+}
+function highlightGraph(ids){ if(!window.network) return; window.network.selectNodes(ids); window.network.focus(ids[0],{scale:1.15,animation:true})}
+function renderInsights(){
+ const byTopic={}; docs.forEach(d=>d.topics.forEach(t=>(byTopic[t]??=[]).push(d)));
+ const groups=Object.entries(byTopic).filter(([,arr])=>arr.length>1).sort((a,b)=>b[1].length-a[1].length);
+ document.getElementById('collab').innerHTML=groups.slice(0,4).map(([topic,arr])=>{
+   const depts=[...new Set(arr.map(x=>x.dept))]; const people=[...new Set(arr.map(x=>x.author))];
+   const sample=arr.slice(0,2);
+   const shared=sample.length>1 ? [...new Set(sample[0].topics.filter(t=>sample[1].topics.includes(t)))].slice(0,2).join(' + ') : topic;
+   return `<div class="result">
+     <b>${topic}</b>
+     <div class="muted">${arr.length} papers • ${depts.length} departments</div>
+     <div style="margin-top:5px;font-size:12px"><strong>Why:</strong> shared research area across ${depts.join(' + ')}</div>
+     <div style="margin-top:3px;font-size:12px"><strong>Potential collaborators:</strong> ${people.slice(0,3).join(', ')}</div>
+     <div style="margin-top:3px;font-size:11px;color:#5c6475">Shared signal: ${shared || topic}</div>
+   </div>`;
+ }).join('');
+ document.getElementById('redundancy').innerHTML=`
+   <div class="result"><span class="pill">HIGH</span><b>Student Performance Prediction</b>
+     <div class="muted">2 existing studies overlap on <strong>Machine Learning + Education + Predictive Analytics</strong>.</div>
+     <div style="margin-top:5px;font-size:12px"><strong>Recommendation:</strong> review the existing work before starting a new study.</div>
+   </div>
+   <div class="result"><span class="pill">MEDIUM</span><b>AI + Healthcare</b>
+     <div class="muted">4 papers share a strong AI/healthcare theme and may form one research cluster.</div>
+   </div>`;
+}
+document.getElementById('fileInput').addEventListener('change', async (e)=>{
+ const file=e.target.files[0]; if(!file)return;
+ document.getElementById('fileStatus').textContent='Processing '+file.name+'...';
+ try{
+   let text='';
+   if(file.name.toLowerCase().endsWith('.pdf')){
+     const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.mjs');
+     pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.mjs';
+     const buf=await file.arrayBuffer(); const pdf=await pdfjs.getDocument({data:buf}).promise;
+     for(let i=1;i<=Math.min(pdf.numPages,8);i++){const page=await pdf.getPage(i);const c=await page.getTextContent();text+=c.items.map(x=>x.str).join(' ')+' ';}
+   } else text=await file.text();
+   const allTopics=['AI','Machine Learning','Healthcare','Agriculture','Computer Vision','NLP','Education','Predictive Analytics','Fraud Detection','Knowledge Graph','Graph Analytics','Explainable AI'];
+   const found=allTopics.filter(t=>lower(text).includes(lower(t)));
+   const title=file.name.replace(/\.[^/.]+$/,'');
+   const newDoc={id:'p'+(docs.length+1),title,author:'Uploaded Researcher',dept:'University',topics:found.length?found:['Research'],dataset:'Uploaded Dataset'};
+   docs.push(newDoc); buildGraph(); renderInsights();
+   document.getElementById('fileStatus').textContent=`Added "${file.name}" • extracted ${newDoc.topics.length} topic(s).`;
+ }catch(err){document.getElementById('fileStatus').textContent='Could not process this file in the browser.';}
+});
+buildGraph(); renderInsights(); runSearch();
+</script>
+</body>
+</html>
